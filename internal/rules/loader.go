@@ -42,7 +42,10 @@ func Load(data []byte) (*RuleSet, error) {
 		DefaultAction: Action(cfg.DefaultAction),
 	}
 
-	for _, raw := range cfg.Rules {
+	for i, raw := range cfg.Rules {
+		if raw.Name == "" {
+			return nil, fmt.Errorf("rule at index %d: name must not be empty", i)
+		}
 		ports, err := scanner.ParsePortList(raw.Ports)
 		if err != nil {
 			return nil, fmt.Errorf("rule %q: invalid ports %q: %w", raw.Name, raw.Ports, err)
