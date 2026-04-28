@@ -2,89 +2,68 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"time"
 )
 
-// Config holds the top-level portwatch daemon configuration.
+// WebhookConfig holds settings for a single outbound webhook.
+type WebhookConfig struct {
+	URL        string            `json:"url"`
+	Headers    map[string]string `json:"headers"`
+	TimeoutSec int               `json:"timeout_sec"`
+}
+
+// Config is the top-level daemon configuration.
 type Config struct {
-	// ScanInterval is how often the port scanner runs.
-	ScanInterval Duration `json:"scan_interval"`
-
-	// Ports is the list or range expression of ports to scan.
-	// e.g. "22,80,443,8000-9000"
-	Ports string `json:"ports"`
-
-	// RulesFile is the path to the JSON rules file.
-	RulesFile string `json:"rules_file"`
-
-	// StateFile is the path where port state snapshots are persisted.
-	StateFile string `json:"state_file"`
-
-	// LogFile is an optional path to write alert log output.
-	// If empty, alerts are written to stdout.
-	LogFile string `json:"log_file,omitempty"`
+	Ports       []string        `json:"ports"`
+	RulesFile   string          `json:"rules_file"`
+	StateFile   string          `json:"state_file"`
+	IntervalSec int             `json:"interval_sec"`
+	Webhooks    []WebhookConfig `json:"webhooks"`
 }
 
-// Duration is a time.Duration that marshals/unmarshals as a string (e.g. "30s").
-type Duration struct {
-	time.Duration
-}
-
-func (d *Duration) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	parsed, err := time.ParseDuration(s)
-	if err != nil {
-		return fmt.Errorf("config: invalid duration %q: %w", s, err)
-	}
-	d.Duration = parsed
-	return nil
-}
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.Duration.String())
-}
-
-// LoadFile reads a JSON config file from the given path.
+// LoadFile reads and parses a JSON config from path.
 func LoadFile(path string) (*Config, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: open %q: %w", path, err)
+		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
-	defer f.Close()
-	return Load(f)
+	return Load(data)
 }
 
-// Load decodes a Config from r and validates required fields.
-func Load(r interface{ Read([]byte) (int, error) }) (*Config, error) {
+// Load parses a JSON config from raw bytes.
+func Load(data []byte) (*Config, error) {
 	var cfg Config
-	if err := json.NewDecoder(r.(interface {
-		Read([]byte) (int, error)
-	})).Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("config: decode: %w", err)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("config: parse: %w", err)
 	}
-	if err := cfg.validate(); err != nil {
+	if err := validate(&cfg); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
 }
 
-func (c *Config) validate() error {
-	if c.Ports == "" {
-		return fmt.Errorf("config: ports must not be empty")
+func validate(cfg *Config) error {
+	if len(cfg.Ports) == 0 {
+		return errors.New("config: ports must not be empty")
 	}
-	if c.RulesFile == "" {
-		return fmt.Errorf("config: rules_file must not be empty")
+	if cfg.RulesFile == "" {
+		return errors.New("config: rules_file must not be empty")
 	}
-	if c.StateFile == "" {
-		return fmt.Errorf("config: state_file must not be empty")
+	if cfg.IntervalSec <= 0 {
+		return errors.New("config: interval_sec must be > 0")
 	}
-	if c.ScanInterval.Duration <= 0 {
-		return fmt.Errorf("config: scan_interval must be a positive duration")
+	for i, wh := range cfg.Webhooks {
+		if wh.URL == "" {
+			return fmt.Errorf("config: webhooks[%d]: url must not be empty", i)
+		}
+		if wh.TimeoutSec <= 0 {
+			cfg.Webhooks[i].TimeoutSec = 5
+		}
+	}
+	if cfg.StateFile == "" {
+		cfg.StateFile = "portwatch-state.json"
 	}
 	return nil
 }
