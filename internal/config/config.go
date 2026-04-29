@@ -2,37 +2,44 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
+	"time"
 )
 
-// WebhookConfig holds settings for a single outbound webhook.
-type WebhookConfig struct {
-	URL        string            `json:"url"`
-	Headers    map[string]string `json:"headers"`
-	TimeoutSec int               `json:"timeout_sec"`
-}
-
-// Config is the top-level daemon configuration.
+// Config holds the top-level portwatch daemon configuration.
 type Config struct {
-	Ports       []string        `json:"ports"`
-	RulesFile   string          `json:"rules_file"`
-	StateFile   string          `json:"state_file"`
-	IntervalSec int             `json:"interval_sec"`
-	Webhooks    []WebhookConfig `json:"webhooks"`
+	Ports     string        `json:"ports"`
+	RulesFile string        `json:"rules_file"`
+	Interval  time.Duration `json:"interval"`
+	StateFile string        `json:"state_file"`
+	Webhooks  []WebhookCfg  `json:"webhooks,omitempty"`
+	Slack     *SlackCfg     `json:"slack,omitempty"`
 }
 
-// LoadFile reads and parses a JSON config from path.
+// WebhookCfg configures a generic HTTP webhook notifier.
+type WebhookCfg struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Timeout time.Duration     `json:"timeout"`
+}
+
+// SlackCfg configures the Slack incoming-webhook notifier.
+type SlackCfg struct {
+	WebhookURL string        `json:"webhook_url"`
+	Timeout    time.Duration `json:"timeout"`
+}
+
+// LoadFile reads and parses a JSON config file from path.
 func LoadFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: read %s: %w", path, err)
+		return nil, fmt.Errorf("config: read file: %w", err)
 	}
 	return Load(data)
 }
 
-// Load parses a JSON config from raw bytes.
+// Load parses a JSON-encoded config from raw bytes.
 func Load(data []byte) (*Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -45,25 +52,17 @@ func Load(data []byte) (*Config, error) {
 }
 
 func validate(cfg *Config) error {
-	if len(cfg.Ports) == 0 {
-		return errors.New("config: ports must not be empty")
+	if cfg.Ports == "" {
+		return fmt.Errorf("config: 'ports' is required")
 	}
 	if cfg.RulesFile == "" {
-		return errors.New("config: rules_file must not be empty")
+		return fmt.Errorf("config: 'rules_file' is required")
 	}
-	if cfg.IntervalSec <= 0 {
-		return errors.New("config: interval_sec must be > 0")
+	if cfg.Interval <= 0 {
+		return fmt.Errorf("config: 'interval' must be positive")
 	}
-	for i, wh := range cfg.Webhooks {
-		if wh.URL == "" {
-			return fmt.Errorf("config: webhooks[%d]: url must not be empty", i)
-		}
-		if wh.TimeoutSec <= 0 {
-			cfg.Webhooks[i].TimeoutSec = 5
-		}
-	}
-	if cfg.StateFile == "" {
-		cfg.StateFile = "portwatch-state.json"
+	if cfg.Slack != nil && cfg.Slack.WebhookURL == "" {
+		return fmt.Errorf("config: slack 'webhook_url' is required when slack block is present")
 	}
 	return nil
 }
