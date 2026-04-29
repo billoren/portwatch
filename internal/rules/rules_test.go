@@ -39,6 +39,16 @@ func TestMatchDefaultFallback(t *testing.T) {
 	}
 }
 
+// TestMatchSecondPort verifies that a rule matches on any port in its list,
+// not just the first one.
+func TestMatchSecondPort(t *testing.T) {
+	rs := baseRuleSet()
+	action, name := rs.Match(443)
+	if action != ActionAllow || name != "allow-web" {
+		t.Errorf("expected allow/allow-web for port 443, got %s/%s", action, name)
+	}
+}
+
 func TestValidateValid(t *testing.T) {
 	rs := baseRuleSet()
 	if err := rs.Validate(); err != nil {
