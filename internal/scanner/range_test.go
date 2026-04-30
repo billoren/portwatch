@@ -21,28 +21,33 @@ func TestParsePortList(t *testing.T) {
 		{"abc", nil, true},
 		{"8000-abc", nil, true},
 		{"9000-8000", nil, true}, // lo > hi
+		{"0", nil, true},         // port 0 is invalid
+		{"65535", []int{65535}, false},
+		{"65536", nil, true}, // exceeds max port
 	}
 
 	for _, tc := range tests {
-		got, err := scanner.ParsePortList(tc.input)
-		if tc.wantErr {
-			if err == nil {
-				t.Errorf("ParsePortList(%q): expected error, got nil", tc.input)
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := scanner.ParsePortList(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("ParsePortList(%q): expected error, got nil", tc.input)
+				}
+				return
 			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("ParsePortList(%q): unexpected error: %v", tc.input, err)
-			continue
-		}
-		if len(got) != len(tc.want) {
-			t.Errorf("ParsePortList(%q): got %v, want %v", tc.input, got, tc.want)
-			continue
-		}
-		for i := range got {
-			if got[i] != tc.want[i] {
-				t.Errorf("ParsePortList(%q)[%d]: got %d, want %d", tc.input, i, got[i], tc.want[i])
+			if err != nil {
+				t.Errorf("ParsePortList(%q): unexpected error: %v", tc.input, err)
+				return
 			}
-		}
+			if len(got) != len(tc.want) {
+				t.Errorf("ParsePortList(%q): got %v, want %v", tc.input, got, tc.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("ParsePortList(%q)[%d]: got %d, want %d", tc.input, i, got[i], tc.want[i])
+				}
+			}
+		})
 	}
 }
