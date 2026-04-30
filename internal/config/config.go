@@ -64,5 +64,10 @@ func validate(cfg *Config) error {
 	if cfg.Slack != nil && cfg.Slack.WebhookURL == "" {
 		return fmt.Errorf("config: slack 'webhook_url' is required when slack block is present")
 	}
+	for i, wh := range cfg.Webhooks {
+		if wh.URL == "" {
+			return fmt.Errorf("config: webhooks[%d]: 'url' is required", i)
+		}
+	}
 	return nil
 }
